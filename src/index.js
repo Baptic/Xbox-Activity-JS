@@ -1,30 +1,20 @@
-const CF = new(require("./utils"))();
+const CF = new (require("./utils"))();
 const fs = require("fs").promises;
 const path = require("path");
-const {
-    Client
-} = require("discord-rpc");
+const { Client } = require("discord-rpc");
 require("dotenv").config();
 
-const {
-    IP,
-    clientId,
-    showGamertag
-} = process.env;
+const { IP, clientId, showGamertag } = process.env;
 const titleIdsFile = "TitleIDs.txt";
 let currentTitleId = null;
 
-const rpc = new Client({
-    transport: "ipc"
-});
+const rpc = new Client({ transport: "ipc" });
 
 async function startRPC() {
     try {
         rpc.removeAllListeners();
         rpc.on("ready", () => console.log("Connected to Discord client"));
-        await rpc.login({
-            clientId
-        });
+        await rpc.login({ clientId });
     } catch (err) {
         console.error("Discord RPC connection failed:", err.message);
         process.exit(1);
@@ -34,7 +24,7 @@ async function startRPC() {
 const getMemoryHex = async (address, length, label) => {
     try {
         const memory = await CF.getMemory(address, length);
-        return memory.toString("hex").toUpperCase();
+        return memory.toString("hex").toUpperCase().trim();
     } catch (err) {
         throw new Error(`Unable to get ${label}: ${err.message}`);
     }
@@ -74,10 +64,10 @@ async function updateGamePresence(titleId) {
             largeImageText: "Made By Avieah",
             smallImageKey: "main_menu",
             smallImageText: "https://github.com/Safauri",
-            startTimestamp: new Date(),
+            startTimestamp: new Date()
         };
 
-        if (showGamertag.toLowerCase() === "true") {
+        if (showGamertag?.toLowerCase() === "true") {
             const tag = await getGamertag();
             if (tag) presence.details = `Gamertag: ${tag}`;
         }
@@ -97,14 +87,14 @@ async function checkActivity() {
 
             if (!titleId || !profileId) {
                 console.error("Missing Title ID or Profile ID");
-            } else if (titleId !== currentTitleId) {
+            } else if (titleId.trim() !== currentTitleId?.trim()) {
                 currentTitleId = titleId;
                 await updateGamePresence(titleId);
             }
         } catch (err) {
             console.error("Activity check error:", err.message);
         } finally {
-            await new Promise(res => setTimeout(res, 180000));
+            await new Promise(res => setTimeout(res, 30000)); // 1-minute refresh
         }
     }
 }

@@ -1,111 +1,91 @@
-const CF = require("xbdm.js");
-const fs = require('fs').promises;
-const path = require('path');
+const CF = new(require("./utils"))();
+const fs = require("fs").promises;
+const path = require("path");
 const {
     Client
-} = require('discord-rpc');
-require('dotenv').config();
+} = require("discord-rpc");
+require("dotenv").config();
 
-const titleIdsFile = 'TitleIDs.txt';
+const {
+    IP,
+    clientId,
+    showGamertag
+} = process.env;
+const titleIdsFile = "TitleIDs.txt";
 let currentTitleId = null;
 
 const rpc = new Client({
     transport: "ipc"
 });
 
-rpc.setMaxListeners(300);
-
 async function startRPC() {
     try {
         rpc.removeAllListeners();
-
-        rpc.on('ready', () => {
-            console.log("Connected to Discord client");
-        });
-
+        rpc.on("ready", () => console.log("Connected to Discord client"));
         await rpc.login({
-            clientId: process.env.clientId
+            clientId
         });
     } catch (err) {
-        console.error('Failed to connect to Discord RPC:', err.message);
+        console.error("Discord RPC connection failed:", err.message);
         process.exit(1);
     }
 }
-async function getTitleId() {
-    try {
-        const memory = await CF.getMemory(0xC0292070, 4); // Memory address for Title ID
-        return memory.toString('hex').toUpperCase();
-    } catch (err) {
-        throw new Error('Failed to get Title ID: ' + err.message);
-    }
-}
 
-async function getProfileId() {
+const getMemoryHex = async (address, length, label) => {
     try {
-        const memory = await CF.getMemory(0xC0291FF0, 7); // Memory address for Profile ID
-        return memory.toString('hex').toUpperCase();
+        const memory = await CF.getMemory(address, length);
+        return memory.toString("hex").toUpperCase();
     } catch (err) {
-        throw new Error('Failed to get Profile ID: ' + err.message);
+        throw new Error(`Unable to get ${label}: ${err.message}`);
     }
-}
+};
+
+const getTitleId = () => getMemoryHex(0xC0292070, 4, "Title ID");
+const getProfileId = () => getMemoryHex(0xC0291FF0, 7, "Profile ID");
 
 async function getGamertag() {
     try {
-        const hexString = await CF.getMemory(0x81AA28FC, 16 * 2); // Memory address for Gamertag
+        const hex = await CF.getMemory(0x81AA28FC, 32);
+        const buffer = Buffer.from(hex, "hex");
+        let name = "";
 
-        // Convert hexadecimal string to Buffer
-        const buffer = Buffer.from(hexString, 'hex');
-
-        // Convert Buffer to UTF-16 Big Endian string
-        let gamertag = '';
         for (let i = 0; i < buffer.length; i += 2) {
-            const charCode = buffer.readUInt16BE(i);
-            if (charCode >= 32 && charCode <= 126) {
-                gamertag += String.fromCharCode(charCode);
-            }
+            const code = buffer.readUInt16BE(i);
+            if (code >= 32 && code <= 126) name += String.fromCharCode(code);
         }
 
-        return gamertag.trim();
+        return name.trim();
     } catch (err) {
-        throw new Error('Failed to get Gamertag: ' + err.message);
+        throw new Error("Unable to retrieve Gamertag: " + err.message);
     }
 }
 
-//update Discord presence based on the current game being played
 async function updateGamePresence(titleId) {
     try {
-        const titleData = await fs.readFile(path.join(__dirname, titleIdsFile), 'utf-8');
-        const lines = titleData.split('\n');
-        const matchedLine = lines.find(line => line.split(',')[0].trim() === titleId.trim());
+        const data = await fs.readFile(path.join(__dirname, titleIdsFile), "utf-8");
+        const match = data.split("\n").find(line => line.split(",")[0].trim() === titleId.trim());
 
-        if (matchedLine) {
-            const [, GameName] = matchedLine.split(',');
+        if (!match) return console.error(`Title ID not recognized: ${titleId}`);
 
-            const presenceDetails = {
-                state: `Playing ${GameName.trim()}`,
-                largeImageKey: "main_menu",
-                largeImageText: "Made By Aelithria",
-                startTimestamp: new Date(),
-                buttons: [{
-                    label: "Stealth Server",
-                    url: "https://discord.gg/xbninja"
-                }]
-            };
+        const [, gameName] = match.split(",");
+        const presence = {
+            state: `Playing ${gameName.trim()}`,
+            largeImageKey: "main_menu",
+            largeImageText: "Made By Avieah",
+            smallImageKey: "main_menu",
+            smallImageText: "https://github.com/Safauri",
+            startTimestamp: new Date(),
+        };
 
-            if (process.env.showGamertag === 'true') {
-                const gamertag = await getGamertag();
-                if (gamertag) {
-                    presenceDetails.details = `Gamertag: ${gamertag}`;
-                }
-            }
-
-            rpc.setActivity(presenceDetails);
-            console.log(`Updated activity: ${GameName.trim()}`);
-        } else {
-            console.error(`No matching game found for Title ID: ${titleId}`);
+        if (showGamertag.toLowerCase() === "true") {
+            const tag = await getGamertag();
+            if (tag) presence.details = `Gamertag: ${tag}`;
         }
+
+        rpc.setActivity(presence);
+        console.log(`Presence updated: ${gameName.trim()}`);
     } catch (err) {
-        console.error('Failed to update game presence:', err.message);
+        console.error("Presence update failed:", err.message);
     }
 }
 
@@ -115,35 +95,27 @@ async function checkActivity() {
             const titleId = await getTitleId();
             const profileId = await getProfileId();
 
-            // If either Title ID or Profile ID is not available, log an error messag
             if (!titleId || !profileId) {
-                console.error('Unable to retrieve Title ID or Profile ID');
+                console.error("Missing Title ID or Profile ID");
             } else if (titleId !== currentTitleId) {
-                currentTitleId = titleId; // If the Title ID has changed, update the current Title ID
+                currentTitleId = titleId;
                 await updateGamePresence(titleId);
             }
         } catch (err) {
-            console.error('Error in activity check:', err.message);
+            console.error("Activity check error:", err.message);
         } finally {
-            await new Promise(resolve => setTimeout(resolve, 180000)); // checks every 3 mins
+            await new Promise(res => setTimeout(res, 180000));
         }
     }
 }
 
-async function main() {
+(async () => {
     try {
-        await CF.connect(process.env.IP);
-        console.log('Connected to Xbox');
-
+        await CF.connect(IP);
+        console.log("Connected to Xbox");
         await startRPC();
         await checkActivity();
     } catch (err) {
-        console.error('Failed to connect to Xbox', err);
+        console.error("Xbox connection failed:", err.message);
     }
-}
-
-main();
-
-/*
-- Credit: Professional for the c# tool
-*/
+})();

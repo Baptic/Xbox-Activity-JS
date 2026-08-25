@@ -1,5 +1,7 @@
 # Xbox Discord Presence
 
+This is outdated now as xbdm.js was remove form npmjs and Github.
+
 This project is a Discord Rich Presence client for Xbox. It uses the `xbdm.js` library to connect to an Xbox console and update the user's Discord presence based on the current game being played.
 
 ## Prerequisites

@@ -1,4 +1,4 @@
-# Xbox Discord Presence
+# Xbox Discord Presence | Outdated/Unsuable
 
 This is outdated now as xbdm.js was remove form npmjs and Github.
 
